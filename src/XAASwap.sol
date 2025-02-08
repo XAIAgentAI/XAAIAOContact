@@ -98,7 +98,9 @@ contract XAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     function start(uint256 totalXAAReward) external onlyOwner {
         require(totalXAAReward == TOTAL_XAA_REWARD, "Invalid XAA reward amount");
         require(isStarted == false, "Distribution already started");
-        xaaToken.transferFrom(msg.sender, address(this), totalXAAReward);
+        if (xaaToken.balanceOf(address(this)) == 0){
+            xaaToken.transferFrom(msg.sender, address(this), totalXAAReward);
+        }
         isStarted = true;
         startTime = block.timestamp;
         endTime = block.timestamp + DEPOSIT_PERIOD;
