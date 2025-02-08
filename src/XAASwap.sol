@@ -4,10 +4,7 @@ pragma solidity ^0.8.22;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-
-interface IERC20 {
-    function transfer(address to, uint256 amount) external returns (bool);
-}
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * @title XAASwap
@@ -31,6 +28,7 @@ contract XAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     // Total amount of DBC deposited in the contract
     uint256 public totalDepositedDBC;
+    bool public isStarted;
 
     // Mapping to store the amount of DBC deposited by each user
     mapping(address => uint256) public userDeposits;
@@ -59,14 +57,13 @@ contract XAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         __Ownable_init(owner);
 
         xaaToken = IERC20(_xaaToken);
-        startTime = block.timestamp;
-        endTime = block.timestamp + DEPOSIT_PERIOD;
     }
 
     /**
      * @dev Modifier to ensure the function is only called during the deposit period.
      */
     modifier onlyDuringDepositPeriod() {
+        require(isStarted, "Distribution not started");
         require(
             block.timestamp >= startTime && block.timestamp <= endTime,
             "Deposit period over"
@@ -78,7 +75,8 @@ contract XAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
      * @dev Modifier to ensure the function is only called after the distribution period begins.
      */
     modifier onlyAfterDistribution() {
-        require(block.timestamp > endTime, "Distribution not started");
+        require(isStarted, "Distribution not started");
+        require(block.timestamp > endTime, "Distribution not end");
         _;
     }
 
@@ -95,6 +93,15 @@ contract XAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         totalDepositedDBC += msg.value;
 
         emit Deposit(msg.sender, msg.value);
+    }
+
+    function start(uint256 totalXAAReward) external onlyOwner {
+        require(totalXAAReward == TOTAL_XAA_REWARD, "Invalid XAA reward amount");
+        require(isStarted == false, "Distribution already started");
+        xaaToken.transferFrom(msg.sender, address(this), totalXAAReward);
+        isStarted = true;
+        startTime = block.timestamp;
+        endTime = block.timestamp + DEPOSIT_PERIOD;
     }
 
     /**
@@ -126,6 +133,9 @@ contract XAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
      * @return Remaining time in seconds, or 0 if the deposit period has ended.
      */
     function getRemainingTime() external view returns (uint256) {
+        if (isStarted == false) {
+            return 0;
+        }
         if (block.timestamp > endTime) {
             return 0;
         }

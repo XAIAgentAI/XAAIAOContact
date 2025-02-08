@@ -7,6 +7,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 interface IERC20 {
     function transfer(address to, uint256 amount) external returns (bool);
+    function transferFrom(address from, address to, uint256 amount) external returns (bool);
 }
 
 /**
@@ -31,6 +32,7 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
 
     // Total amount of DBC deposited in the contract
     uint256 public totalDepositedDBC;
+    bool public isStarted;
 
     // Mapping to store the amount of DBC deposited by each user
     mapping(address => uint256) public userDeposits;
@@ -41,6 +43,7 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // Events
     event Deposit(address indexed user, uint256 amount);
     event RewardsClaimed(address indexed user, uint256 amount);
+    event DBCClaimed(uint256 amount);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -58,14 +61,13 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         __Ownable_init(owner);
 
         xaaToken = IERC20(_xaaToken);
-        startTime = block.timestamp;
-        endTime = block.timestamp + DEPOSIT_PERIOD;
     }
 
     /**
      * @dev Modifier to ensure the function is only called during the deposit period.
      */
     modifier onlyDuringDepositPeriod() {
+        require(isStarted, "Distribution not started");
         require(
             block.timestamp >= startTime && block.timestamp <= endTime,
             "Deposit period over"
@@ -77,7 +79,8 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
      * @dev Modifier to ensure the function is only called after the distribution period begins.
      */
     modifier onlyAfterDistribution() {
-        require(block.timestamp > endTime, "Distribution not started");
+        require(isStarted, "Distribution not started");
+        require(block.timestamp > endTime, "Distribution not end");
         _;
     }
 
@@ -96,6 +99,15 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         emit Deposit(msg.sender, msg.value);
     }
 
+    function start(uint256 totalXAAReward) external onlyOwner {
+        require(totalXAAReward == TOTAL_XAA_REWARD, "Invalid XAA reward amount");
+//        xaaToken.transferFrom(msg.sender, address(this), totalXAAReward);
+        require(isStarted == false, "Distribution already started");
+        isStarted = true;
+        startTime = block.timestamp;
+        endTime = block.timestamp + DEPOSIT_PERIOD;
+    }
+
     /**
      * @dev Allows users to claim their XAA rewards after the distribution period begins.
      * The amount of XAA is proportional to the amount of DBC they deposited.
@@ -106,7 +118,7 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         require(userDeposits[msg.sender] > 0, "No deposit found");
 
         uint256 userReward = (userDeposits[msg.sender] * TOTAL_XAA_REWARD) /
-            totalDepositedDBC;
+                    totalDepositedDBC;
 
         // Mark rewards as claimed
         hasClaimed[msg.sender] = true;
@@ -125,10 +137,27 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
      * @return Remaining time in seconds, or 0 if the deposit period has ended.
      */
     function getRemainingTime() external view returns (uint256) {
+        if (isStarted == false) {
+            return 0;
+        }
         if (block.timestamp > endTime) {
             return 0;
         }
         return endTime - block.timestamp;
+    }
+
+    /**
+       * @dev Allows the owner (admin) to claim any remaining DBC from the contract.
+     * This function can only be called after the deposit period ends.
+     */
+    function claimDBC() external onlyAfterDistribution onlyOwner {
+        uint256 dbcBalance = address(this).balance;
+        require(dbcBalance > 0, "No DBC to claim");
+
+        // Transfer all remaining DBC to the owner
+        (bool success, ) = msg.sender.call{value: dbcBalance}("");
+        require(success, "DBC transfer failed");
+        emit DBCClaimed(dbcBalance);
     }
 
     /**
