@@ -3,12 +3,12 @@ pragma solidity ^0.8.22;
 
 import "forge-std/Test.sol";
 import "forge-std/console.sol";
-import "../src/XAASwap.sol";
+import "../src/IAO.sol";
 import {MockERC20} from "forge-std/mocks/MockERC20.sol";
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract XAASwapTest is Test {
-    XAASwap public xaaSwap;
+    IAO public xaaSwap;
     MockERC20 public xaaToken;
 
     address public owner = address(0x1);
@@ -25,21 +25,21 @@ contract XAASwapTest is Test {
         vm.startPrank(owner);
 
         ERC1967Proxy proxy = new ERC1967Proxy(
-            address(new XAASwap()),
+            address(new IAO()),
             abi.encodeWithSelector(
-                XAASwap.initialize.selector,
+                IAO.initialize.selector,
                 owner,
                 address(xaaToken)
             )
         );
-        xaaSwap = XAASwap(payable(address(proxy)));
+        xaaSwap = IAO(payable(address(proxy)));
         // Transfer total XAA rewards to the contract
         deal(address(xaaToken), address(xaaSwap), TOTAL_XAA_REWARD);
         vm.stopPrank();
     }
 
     function testInitialize() public view {
-        assertEq(address(xaaSwap.xaaToken()), address(xaaToken));
+        assertEq(address(xaaSwap.rewardToken()), address(xaaToken));
         assertEq(xaaSwap.startTime(), block.timestamp);
         assertEq(xaaSwap.endTime(), block.timestamp + DEPOSIT_PERIOD);
     }

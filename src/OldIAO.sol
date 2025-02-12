@@ -4,24 +4,20 @@ pragma solidity ^0.8.22;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-
-interface IERC20 {
-    function transfer(address to, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-}
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
- * @title XAASwap
+ * @title IAO
  * @dev This contract allows users to deposit the native token (DBC) during a 14-day deposit period.
- * After the distribution period begins, users can claim their proportional XAA rewards based on the amount of DBC they deposited.
+ * After the distribution period begins, users can claim their proportional ERC20 rewards based on the amount of DBC they deposited.
  */
-/// @custom:oz-upgrades-from OldXAASwap
-contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
-    // Address of the XAA ERC20 token contract
-    IERC20 public xaaToken;
+/// @custom:oz-upgrades-from OldIAO
+contract OldIAO is Initializable, UUPSUpgradeable, OwnableUpgradeable {
+    // Address of the ERC20 reward token contract
+    IERC20 public rewardToken;
 
-    // Total XAA rewards to be distributed: 20 billion XAA (in wei)
-    uint256 public constant TOTAL_XAA_REWARD = 20_000_000_000 * 1e18;
+    // Total rewards to be distributed: 20 billion (in wei)
+    uint256 public constant TOTAL_REWARD = 20_000_000_000 * 1e18;
 
     // Deposit period: 14 days
     uint256 public constant DEPOSIT_PERIOD = 14 days;
@@ -37,7 +33,7 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
     // Mapping to store the amount of DBC deposited by each user
     mapping(address => uint256) public userDeposits;
 
-    // Mapping to track whether a user has claimed their XAA rewards
+    // Mapping to track whether a user has claimed their  rewards
     mapping(address => bool) public hasClaimed;
 
     // Events
@@ -51,16 +47,12 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         _disableInitializers();
     }
 
-    /**
-     * @dev Initializes the contract with the address of the XAA token.
-     * This function can only be called once during the deployment process.
-     * @param _xaaToken Address of the XAA ERC20 token contract
-     */
-    function initialize(address owner, address _xaaToken) public initializer {
+
+    function initialize(address owner, address _rewardToken) public initializer {
         __UUPSUpgradeable_init();
         __Ownable_init(owner);
 
-        xaaToken = IERC20(_xaaToken);
+        rewardToken = IERC20(_rewardToken);
     }
 
     /**
@@ -99,34 +91,36 @@ contract OldXAASwap is Initializable, UUPSUpgradeable, OwnableUpgradeable {
         emit Deposit(msg.sender, msg.value);
     }
 
-    function start(uint256 totalXAAReward) external onlyOwner {
-        require(totalXAAReward == TOTAL_XAA_REWARD, "Invalid XAA reward amount");
-//        xaaToken.transferFrom(msg.sender, address(this), totalXAAReward);
+    function start(uint256 totalRewardAmount) external onlyOwner {
+        require(totalRewardAmount == TOTAL_REWARD, "Invalid reward amount");
         require(isStarted == false, "Distribution already started");
+        if (rewardToken.balanceOf(address(this)) == 0){
+            rewardToken.transferFrom(msg.sender, address(this), totalRewardAmount);
+        }
         isStarted = true;
         startTime = block.timestamp;
         endTime = block.timestamp + DEPOSIT_PERIOD;
     }
 
     /**
-     * @dev Allows users to claim their XAA rewards after the distribution period begins.
-     * The amount of XAA is proportional to the amount of DBC they deposited.
+     * @dev Allows users to claim their rewards after the distribution period begins.
+     * The amount of rewards is proportional to the amount of DBC they deposited.
      * Emits a `RewardsClaimed` event.
      */
     function claimRewards() external onlyAfterDistribution {
         require(!hasClaimed[msg.sender], "Rewards already claimed");
         require(userDeposits[msg.sender] > 0, "No deposit found");
 
-        uint256 userReward = (userDeposits[msg.sender] * TOTAL_XAA_REWARD) /
+        uint256 userReward = (userDeposits[msg.sender] * TOTAL_REWARD) /
                     totalDepositedDBC;
 
         // Mark rewards as claimed
         hasClaimed[msg.sender] = true;
 
-        // Transfer XAA rewards to the user
+        // Transfer rewards to the user
         require(
-            xaaToken.transfer(msg.sender, userReward),
-            "XAA transfer failed"
+            rewardToken.transfer(msg.sender, userReward),
+            "rewards transfer failed"
         );
 
         emit RewardsClaimed(msg.sender, userReward);
